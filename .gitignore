@@ -1,0 +1,84 @@
+# .NET build outputs
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+publish/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# VS Code local settings
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains Rider / ReSharper
+.idea/
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Test results and code coverage
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+BenchmarkDotNet.Artifacts/
+
+# Logs and temporary files
+[Ll]ogs/
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.pid
+
+# NuGet-generated packages
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+
+# Local secrets and environment variables
+.env
+.env.*
+*.env
+secrets.json
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Certificates, keys, and credentials
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+
+# Azure deployment artifacts
+.azure/
+*.publishsettings
+*.pubxml
+*.pubxml.user
+PublishProfiles/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Copilot and local AI tool files, if present
+.copilot/
+.claude/
