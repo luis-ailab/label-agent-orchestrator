@@ -56,3 +56,4 @@ C:\Users\lfajardo\OneDrive - Life Extension\AI-Lab\LabelCreationPlatform\Label.A
 C:\Users\lfajardo\OneDrive - Life Extension\AI-Lab\LabelCreationPlatform\Label.Agent.Orchestrator\obj\Debug\net10.0\Label.Agent.Orchestrator.pdb
 C:\Users\lfajardo\OneDrive - Life Extension\AI-Lab\LabelCreationPlatform\Label.Agent.Orchestrator\obj\Debug\net10.0\Label.Agent.Orchestrator.genruntimeconfig.cache
 C:\Users\lfajardo\OneDrive - Life Extension\AI-Lab\LabelCreationPlatform\Label.Agent.Orchestrator\obj\Debug\net10.0\ref\Label.Agent.Orchestrator.dll
+C:\Users\lfajardo\OneDrive - Life Extension\AI-Lab\LabelCreationPlatform\Label.Agent.Orchestrator\obj\Debug\net10.0\Label.Agent.Orchestrator.sourcelink.json

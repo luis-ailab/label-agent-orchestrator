@@ -114,16 +114,16 @@ builder.Services.AddSingleton<AIAgent>(serviceProvider =>
     """;
 
     return projectClient.AsAIAgent(
-        model: settings.ModelDeploymentName,
-        name: "LabelPlatformOrchestrator",
-        instructions: orchestratorInstructions,
-        tools:
-        [
-            productAgentTool,
-            regulatoryAgentTool
-        ]);
+            model: settings.ModelDeploymentName,
+            name: "LabelPlatformOrchestrator",
+            instructions: orchestratorInstructions,
+            tools:
+            [
+                productAgentTool,
+                regulatoryAgentTool
+            ]);
 });
-
+builder.Services.AddSingleton<ConversationSessionStore>();
 builder.Services.AddSingleton<OrchestratorService>();
 
 var app = builder.Build();
