@@ -9,15 +9,18 @@ public sealed class OrchestratorService
     private readonly AIAgent _orchestrator;
     private readonly RunEventPublisher _eventPublisher;
     private readonly AgentExecutionContext _executionContext;
+    private readonly ConversationSessionStore _sessionStore;
 
     public OrchestratorService(
         AIAgent orchestrator,
         RunEventPublisher eventPublisher,
-        AgentExecutionContext executionContext)
+        AgentExecutionContext executionContext,
+        ConversationSessionStore sessionStore)
     {
         _orchestrator = orchestrator;
         _eventPublisher = eventPublisher;
         _executionContext = executionContext;
+        _sessionStore = sessionStore;
     }
 
     public async Task<PromptResponse> RunAsync(
@@ -49,9 +52,20 @@ public sealed class OrchestratorService
 
         try
         {
-            AgentSession session =
-                await _orchestrator.CreateSessionAsync(
-                    cancellationToken);
+            AgentSession? session =
+                _sessionStore.GetSession(
+                    connectionId);
+
+            if (session is null)
+            {
+                session =
+                    await _orchestrator.CreateSessionAsync(
+                        cancellationToken);
+
+                _sessionStore.SaveSession(
+                    connectionId,
+                    session);
+            }
 
             AgentResponse agentResponse =
                 await _orchestrator.RunAsync(

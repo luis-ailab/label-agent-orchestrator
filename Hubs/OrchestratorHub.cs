@@ -7,13 +7,16 @@ namespace Label.Agent.Orchestrator.Hubs;
 public sealed class OrchestratorHub : Hub
 {
     private readonly OrchestratorService _orchestratorService;
+    private readonly ConversationSessionStore _sessionStore;
     private readonly ILogger<OrchestratorHub> _logger;
 
     public OrchestratorHub(
         OrchestratorService orchestratorService,
+        ConversationSessionStore sessionStore,
         ILogger<OrchestratorHub> logger)
     {
         _orchestratorService = orchestratorService;
+        _sessionStore = sessionStore;
         _logger = logger;
     }
 
@@ -45,5 +48,16 @@ public sealed class OrchestratorHub : Hub
             throw new HubException(
                 $"Orchestrator execution failed: {ex.Message}");
         }
+    }
+
+    public Task ResetConversation()
+    {
+        _sessionStore.RemoveSession(Context.ConnectionId);
+
+        _logger.LogInformation(
+            "Conversation reset. Connection: {ConnectionId}",
+            Context.ConnectionId);
+
+        return Task.CompletedTask;
     }
 }
