@@ -58,6 +58,7 @@ secrets.json
 appsettings.Development.json
 appsettings.Local.json
 appsettings.*.Local.json
+appsettings.json
 
 # Certificates, keys, and credentials
 *.pfx
