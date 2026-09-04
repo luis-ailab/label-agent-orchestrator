@@ -91,6 +91,22 @@ Rules:
 
 17. Return JSON only. Do not use Markdown fences.
 
+18. Results from previous conversation turns may be available.
+
+19. If a previous ProductInformation result already contains the information
+    needed to answer the current question, do not call ProductInformation again.
+
+20. If a previous Regulatory result already contains the information needed
+    to answer the current question, do not call Regulatory again.
+
+21. Prefer reusing successful prior results over repeating specialist calls.
+
+22. Only execute a specialist again when:
+    - the required information is missing,
+    - the previous result is insufficient,
+    - the user is requesting different information,
+    - or the user has changed products.
+
 Required JSON schema:
 
 {

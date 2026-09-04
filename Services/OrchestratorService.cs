@@ -31,11 +31,21 @@ public sealed class OrchestratorService(
                 connectionId, runId, "RunStarted", "WebApplication",
                 "Prompt received.", cancellationToken: cancellationToken);
 
-            var state = new WorkflowRunState
-            {
-                RunId = runId,
-                UserPrompt = prompt
-            };
+                var state = new WorkflowRunState
+                {
+                    RunId = runId,
+                    UserPrompt = prompt
+                };
+
+                foreach (StepResult cachedResult in
+                        sessionStore.GetRecentResults(conversationId))
+                {
+                    state.Results.Add(
+                        cachedResult with
+                        {
+                            ReusedFromPreviousConversationTurn = true
+                        });
+                }
 
             await eventPublisher.PublishAsync(
                 connectionId, runId, "WorkflowStarted", "LabelWorkflow",
@@ -63,9 +73,18 @@ public sealed class OrchestratorService(
                 switch (decision.Action)
                 {
                     case PlannerAction.ExecuteStep:
-                        StepResult result = await workflow.ExecuteStepAsync(
-                            decision, state, connectionId, cancellationToken);
+                        StepResult result =
+                            await workflow.ExecuteStepAsync(
+                                decision,
+                                state,
+                                connectionId,
+                                cancellationToken);
+
                         state.Results.Add(result);
+
+                        sessionStore.SaveResult(
+                            conversationId,
+                            result);
                         break;
 
                     case PlannerAction.Clarify:
