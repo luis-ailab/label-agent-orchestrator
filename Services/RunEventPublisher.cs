@@ -4,16 +4,8 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Label.Agent.Orchestrator.Services;
 
-public sealed class RunEventPublisher
+public sealed class RunEventPublisher(IHubContext<OrchestratorHub> hubContext)
 {
-    private readonly IHubContext<OrchestratorHub> _hubContext;
-
-    public RunEventPublisher(
-        IHubContext<OrchestratorHub> hubContext)
-    {
-        _hubContext = hubContext;
-    }
-
     public Task PublishAsync(
         string connectionId,
         string runId,
@@ -35,11 +27,7 @@ public sealed class RunEventPublisher
             DurationMilliseconds = durationMilliseconds
         };
 
-        return _hubContext.Clients
-            .Client(connectionId)
-            .SendAsync(
-                "AgentRunEvent",
-                runEvent,
-                cancellationToken);
+        return hubContext.Clients.Client(connectionId)
+            .SendAsync("AgentRunEvent", runEvent, cancellationToken);
     }
 }
