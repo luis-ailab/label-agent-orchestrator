@@ -37,7 +37,36 @@ public sealed class PlannerAgentService(
         builder.AppendLine("Decide the next action for this workflow run.");
         builder.AppendLine($"Original user request: {state.UserPrompt}");
         builder.AppendLine($"Planning iteration: {state.PlanningIteration}");
-        builder.AppendLine("Completed workflow steps:");
+        builder.AppendLine("Available workflow results:");
+
+        if (state.Results.Count == 0)
+        {
+            builder.AppendLine("None.");
+        }
+        else
+        {
+            foreach (StepResult result in state.Results)
+            {
+                builder.AppendLine(
+                    result.ReusedFromPreviousConversationTurn
+                        ? "Source: Previous Conversation Turn"
+                        : "Source: Current Conversation Turn");
+
+                builder.AppendLine($"Step {result.StepNumber}");
+
+                builder.AppendLine($"Agent: {result.Agent}");
+
+                builder.AppendLine($"Goal: {result.Goal}");
+
+                builder.AppendLine($"Successful: {result.Successful}");
+
+                builder.AppendLine("Output:");
+
+                builder.AppendLine(result.Output);
+
+                builder.AppendLine("---");
+            }
+        }
 
         if (state.Results.Count == 0)
         {
