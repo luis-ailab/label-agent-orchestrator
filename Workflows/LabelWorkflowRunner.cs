@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Label.Agent.Orchestrator.Configuration;
 using Label.Agent.Orchestrator.Contracts;
+using Label.Agent.Orchestrator.LabelGeneration;
 using Label.Agent.Orchestrator.Services;
 using Label.Agent.Orchestrator.TemplateIntelligence;
 
@@ -9,13 +10,15 @@ namespace Label.Agent.Orchestrator.Workflows;
 
 public sealed class LabelWorkflowRunner(
     FoundryAgentGateway gateway,
-    TemplateIntelligenceClient templateIntelligenceClient,
-    RunEventPublisher eventPublisher,
+    TemplateIntelligenceClient templateClient,
+    LabelGenerationClient generationClient,
+    RunEventPublisher events,
     OrchestratorSettings settings)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     public async Task<StepResult> ExecuteStepAsync(
@@ -24,8 +27,7 @@ public sealed class LabelWorkflowRunner(
         string connectionId,
         CancellationToken cancellationToken)
     {
-        if (decision.Action != PlannerAction.ExecuteStep ||
-            decision.Agent is null)
+        if (decision.Action != PlannerAction.ExecuteStep || decision.Agent is null)
         {
             throw new InvalidOperationException(
                 "Planner decision does not contain an executable step.");
@@ -41,7 +43,7 @@ public sealed class LabelWorkflowRunner(
         int stepNumber = state.Results.Count + 1;
         string component = $"Workflow.Step.{stepNumber}";
 
-        await eventPublisher.PublishAsync(
+        await events.PublishAsync(
             connectionId,
             state.RunId,
             "StepStarted",
@@ -56,30 +58,36 @@ public sealed class LabelWorkflowRunner(
             string output = decision.Agent.Value switch
             {
                 AgentKind.ProductInformation =>
-                    await ExecuteFoundryAgentAsync(
+                    await gateway.InvokeAgentAsync(
                         settings.ProductAgentName,
                         decision.AgentRequest,
-                        state,
+                        state.RunId,
                         connectionId,
                         cancellationToken),
 
                 AgentKind.Regulatory =>
-                    await ExecuteFoundryAgentAsync(
+                    await gateway.InvokeAgentAsync(
                         settings.RegulatoryAgentName,
+                        decision.AgentRequest,
+                        state.RunId,
+                        connectionId,
+                        cancellationToken),
+
+                AgentKind.TemplateIntelligence =>
+                    await ExecuteTemplateAsync(
                         decision.AgentRequest,
                         state,
                         connectionId,
                         cancellationToken),
 
-                AgentKind.TemplateIntelligence =>
-                    await ExecuteTemplateIntelligenceAsync(
-                        decision.AgentRequest,
+                AgentKind.LabelGeneration =>
+                    await ExecuteGenerationAsync(
                         state,
                         connectionId,
                         cancellationToken),
 
                 _ => throw new InvalidOperationException(
-                    $"Unsupported workflow component: {decision.Agent.Value}.")
+                    $"Unsupported component: {decision.Agent.Value}")
             };
 
             stopwatch.Stop();
@@ -95,7 +103,7 @@ public sealed class LabelWorkflowRunner(
                 DurationMilliseconds = stopwatch.ElapsedMilliseconds
             };
 
-            await eventPublisher.PublishAsync(
+            await events.PublishAsync(
                 connectionId,
                 state.RunId,
                 "StepCompleted",
@@ -111,7 +119,7 @@ public sealed class LabelWorkflowRunner(
         {
             stopwatch.Stop();
 
-            await eventPublisher.PublishAsync(
+            await events.PublishAsync(
                 connectionId,
                 state.RunId,
                 "StepFailed",
@@ -125,31 +133,18 @@ public sealed class LabelWorkflowRunner(
         }
     }
 
-    private async Task<string> ExecuteFoundryAgentAsync(
-        string agentName,
-        string request,
+    private async Task<string> ExecuteTemplateAsync(
+        string json,
         WorkflowRunState state,
         string connectionId,
         CancellationToken cancellationToken)
     {
-        return await gateway.InvokeAgentAsync(
-            agentName,
-            request,
-            state.RunId,
-            connectionId,
-            cancellationToken);
-    }
+        TemplateRecommendationRequest request =
+            ParseJson<TemplateRecommendationRequest>(
+                json,
+                "Template Intelligence request");
 
-    private async Task<string> ExecuteTemplateIntelligenceAsync(
-        string request,
-        WorkflowRunState state,
-        string connectionId,
-        CancellationToken cancellationToken)
-    {
-        TemplateRecommendationRequest recommendationRequest =
-            ParseTemplateRequest(request);
-
-        await eventPublisher.PublishAsync(
+        await events.PublishAsync(
             connectionId,
             state.RunId,
             "ServiceStarted",
@@ -157,122 +152,149 @@ public sealed class LabelWorkflowRunner(
             "Evaluating available label templates.",
             cancellationToken: cancellationToken);
 
-        var stopwatch = Stopwatch.StartNew();
+        TemplateRecommendationResponse response =
+            await templateClient.RecommendAsync(request, cancellationToken);
 
-        try
-        {
-            TemplateRecommendationResponse recommendation =
-                await templateIntelligenceClient.RecommendAsync(
-                    recommendationRequest,
-                    cancellationToken);
+        int confidencePercentage =
+            (int)Math.Round(response.Selected.Confidence * 100);
 
-            stopwatch.Stop();
+        await events.PublishAsync(
+            connectionId,
+            state.RunId,
+            "TemplateSelected",
+            "TemplateIntelligence",
+            $"Selected template '{response.Selected.TemplateName}' " +
+            $"with {confidencePercentage}% confidence.",
+            "Completed",
+            cancellationToken: cancellationToken);
 
-            await eventPublisher.PublishAsync(
-                connectionId,
-                state.RunId,
-                "TemplateSelected",
-                "TemplateIntelligence",
-                BuildTemplateSelectionMessage(recommendation),
-                "Completed",
-                stopwatch.ElapsedMilliseconds,
-                cancellationToken);
-
-            return JsonSerializer.Serialize(
-                recommendation,
-                JsonOptions);
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-
-            await eventPublisher.PublishAsync(
-                connectionId,
-                state.RunId,
-                "ServiceFailed",
-                "TemplateIntelligence",
-                ex.Message,
-                "Failed",
-                stopwatch.ElapsedMilliseconds,
-                cancellationToken);
-
-            throw;
-        }
+        return JsonSerializer.Serialize(response, JsonOptions);
     }
 
-    private static TemplateRecommendationRequest ParseTemplateRequest(
-        string request)
+    private async Task<string> ExecuteGenerationAsync(
+        WorkflowRunState state,
+        string connectionId,
+        CancellationToken cancellationToken)
     {
-        string json = StripMarkdownFences(request);
+        StepResult productResult = GetLatestRequiredResult(
+            state,
+            AgentKind.ProductInformation,
+            "Product Information");
+
+        StepResult regulatoryResult = GetLatestRequiredResult(
+            state,
+            AgentKind.Regulatory,
+            "Regulatory");
+
+        StepResult templateResult = GetLatestRequiredResult(
+            state,
+            AgentKind.TemplateIntelligence,
+            "Template Intelligence");
+
+        TemplateRecommendationResponse templateRecommendation =
+            ParseJson<TemplateRecommendationResponse>(
+                templateResult.Output,
+                "Template Intelligence workflow result");
+
+        GenerationTemplate generationTemplate = MapTemplate(
+            templateRecommendation.Template);
+
+        var request = new LabelGenerationRequest(
+            UserRequest: state.UserPrompt,
+            ProductInformation: productResult.Output,
+            RegulatoryGuidance: regulatoryResult.Output,
+            Template: generationTemplate,
+            CandidateCount: 3);
+
+        await events.PublishAsync(
+            connectionId,
+            state.RunId,
+            "GenerationStarted",
+            "LabelGeneration",
+            "Generating three label-content candidates from verified workflow results.",
+            cancellationToken: cancellationToken);
+
+        LabelGenerationResponse response =
+            await generationClient.GenerateAsync(request, cancellationToken);
+
+        foreach (LabelCandidate candidate in response.Candidates)
+        {
+            await events.PublishAsync(
+                connectionId,
+                state.RunId,
+                "LabelCandidateGenerated",
+                $"Candidate {candidate.Id}",
+                JsonSerializer.Serialize(candidate, JsonOptions),
+                "Completed",
+                cancellationToken: cancellationToken);
+        }
+
+        await events.PublishAsync(
+            connectionId,
+            state.RunId,
+            "GenerationCompleted",
+            "LabelGeneration",
+            $"Generated {response.Candidates.Count} candidates using " +
+            $"template '{response.TemplateId}'.",
+            "Completed",
+            cancellationToken: cancellationToken);
+
+        return JsonSerializer.Serialize(response, JsonOptions);
+    }
+
+    private static StepResult GetLatestRequiredResult(
+        WorkflowRunState state,
+        AgentKind agent,
+        string displayName)
+    {
+        StepResult? result = state.Results
+            .Where(item => item.Agent == agent && item.Successful)
+            .OrderByDescending(item => item.CreatedAtUtc)
+            .FirstOrDefault();
+
+        return result ?? throw new InvalidOperationException(
+            $"Label Generation requires a successful {displayName} result.");
+    }
+
+    private static GenerationTemplate MapTemplate(
+        LabelTemplate source)
+    {
+        var sections = source.Sections
+            .OrderBy(section => section.Order)
+            .Select(section => new GenerationTemplateSection(
+                Key: section.Key,
+                DisplayName: section.DisplayName,
+                Required: section.Required,
+                Order: section.Order,
+                Region: section.Region,
+                Rules: section.Rules))
+            .ToList();
+
+        return new GenerationTemplate(
+            Id: source.Id,
+            Name: source.Name,
+            Sections: sections,
+            ContentRules: source.ContentRules);
+    }
+
+    private static T ParseJson<T>(
+        string value,
+        string description)
+    {
+        string json = StripMarkdownFences(value);
 
         try
         {
-            TemplateRecommendationRequest? parsed =
-                JsonSerializer.Deserialize<TemplateRecommendationRequest>(
-                    json,
-                    JsonOptions);
-
-            if (parsed is null)
-            {
-                throw new InvalidOperationException(
-                    "The Template Intelligence request was empty.");
-            }
-
-            ValidateTemplateRequest(parsed);
-
-            return parsed;
+            return JsonSerializer.Deserialize<T>(json, JsonOptions)
+                ?? throw new InvalidOperationException(
+                    $"The {description} was empty.");
         }
         catch (JsonException ex)
         {
             throw new InvalidOperationException(
-                "The planner returned an invalid Template Intelligence request. " +
-                "A valid JSON object is required.",
+                $"The {description} contained invalid JSON.",
                 ex);
         }
-    }
-
-    private static void ValidateTemplateRequest(
-        TemplateRecommendationRequest request)
-    {
-        var missingFields = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(request.Market))
-        {
-            missingFields.Add("market");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.ProductCategory))
-        {
-            missingFields.Add("productCategory");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.DosageForm))
-        {
-            missingFields.Add("dosageForm");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.PackageType))
-        {
-            missingFields.Add("packageType");
-        }
-
-        if (missingFields.Count > 0)
-        {
-            throw new InvalidOperationException(
-                "Template Intelligence requires these fields: " +
-                string.Join(", ", missingFields));
-        }
-    }
-
-    private static string BuildTemplateSelectionMessage(
-        TemplateRecommendationResponse recommendation)
-    {
-        int confidencePercentage =
-            (int)Math.Round(recommendation.Selected.Confidence * 100);
-
-        return
-            $"Selected template '{recommendation.Selected.TemplateName}' " +
-            $"with {confidencePercentage}% confidence.";
     }
 
     private static string StripMarkdownFences(string value)
