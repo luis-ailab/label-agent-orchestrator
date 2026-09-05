@@ -2,23 +2,35 @@ using Azure.AI.Projects;
 using Azure.Identity;
 using Label.Agent.Orchestrator.Configuration;
 using Label.Agent.Orchestrator.Hubs;
+using Label.Agent.Orchestrator.Evaluation;
 using Label.Agent.Orchestrator.LabelGeneration;
 using Label.Agent.Orchestrator.Planning;
 using Label.Agent.Orchestrator.Services;
 using Label.Agent.Orchestrator.TemplateIntelligence;
 using Label.Agent.Orchestrator.Workflows;
 using Microsoft.Agents.AI;
-var builder=WebApplication.CreateBuilder(args);
-builder.Services.AddSignalR(o=>o.EnableDetailedErrors=builder.Environment.IsDevelopment());
-builder.Services.AddCors(o=>o.AddPolicy("ReactDevelopment",p=>p.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
-OrchestratorSettings settings=OrchestratorSettings.Load(builder.Configuration);
-var projectClient=new AIProjectClient(new Uri(settings.ProjectEndpoint),new AzureCliCredential());
-builder.Services.AddSingleton(settings);builder.Services.AddSingleton(projectClient);
-builder.Services.AddSingleton<ConversationSessionStore>();builder.Services.AddSingleton<RunEventPublisher>();builder.Services.AddSingleton<FoundryAgentGateway>();builder.Services.AddSingleton<PlannerResponseParser>();
-builder.Services.AddSingleton<AIAgent>(_=>projectClient.AsAIAgent(model:settings.ModelDeploymentName,name:"LabelPlatformPlanner",instructions:PlannerPrompts.Instructions));
-builder.Services.AddSingleton<PlannerAgentService>();builder.Services.AddSingleton<LabelWorkflowRunner>();builder.Services.AddSingleton<OrchestratorService>();
-builder.Services.AddHttpClient<TemplateIntelligenceClient>(c=>{c.BaseAddress=new Uri(builder.Configuration["Services:TemplateIntelligence:BaseUrl"]??throw new InvalidOperationException("Template Intelligence BaseUrl is missing."));c.Timeout=TimeSpan.FromSeconds(15);});
-builder.Services.AddHttpClient<LabelGenerationClient>(c=>{c.BaseAddress=new Uri(builder.Configuration["Services:LabelGeneration:BaseUrl"]??throw new InvalidOperationException("Label Generation BaseUrl is missing."));c.Timeout=TimeSpan.FromMinutes(3);});
-var app=builder.Build();app.UseCors("ReactDevelopment");
-app.MapGet("/health",()=>Results.Ok(new{status="Healthy",service="Label.Agent.Orchestrator",mode="PlannerWorkflowPhase2",timestamp=DateTimeOffset.UtcNow}));
-app.MapHub<OrchestratorHub>("/hubs/orchestrator");app.Run();
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSignalR(o => o.EnableDetailedErrors = builder.Environment.IsDevelopment());
+builder.Services.AddCors(o => o.AddPolicy("ReactDevelopment", p => p.WithOrigins("http://localhost:5173").AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+OrchestratorSettings settings = OrchestratorSettings.Load(builder.Configuration);
+var projectClient = new AIProjectClient(new Uri(settings.ProjectEndpoint), new AzureCliCredential());
+builder.Services.AddSingleton(settings); builder.Services.AddSingleton(projectClient);
+builder.Services.AddSingleton<ConversationSessionStore>(); builder.Services.AddSingleton<RunEventPublisher>(); builder.Services.AddSingleton<FoundryAgentGateway>(); builder.Services.AddSingleton<PlannerResponseParser>();
+builder.Services.AddSingleton<AIAgent>(_ => projectClient.AsAIAgent(model: settings.ModelDeploymentName, name: "LabelPlatformPlanner", instructions: PlannerPrompts.Instructions));
+builder.Services.AddSingleton<PlannerAgentService>(); builder.Services.AddSingleton<LabelWorkflowRunner>(); builder.Services.AddSingleton<OrchestratorService>();
+builder.Services.AddHttpClient<TemplateIntelligenceClient>(c => { c.BaseAddress = new Uri(builder.Configuration["Services:TemplateIntelligence:BaseUrl"] ?? throw new InvalidOperationException("Template Intelligence BaseUrl is missing.")); c.Timeout = TimeSpan.FromSeconds(15); });
+builder.Services.AddHttpClient<LabelGenerationClient>(c => { c.BaseAddress = new Uri(builder.Configuration["Services:LabelGeneration:BaseUrl"] ?? throw new InvalidOperationException("Label Generation BaseUrl is missing.")); c.Timeout = TimeSpan.FromMinutes(3); });
+builder.Services.AddHttpClient<CandidateEvaluationClient>(client =>
+{
+    var baseUrl =
+        builder.Configuration["Services:CandidateEvaluation:BaseUrl"]
+        ?? throw new InvalidOperationException(
+            "Candidate Evaluation BaseUrl is missing.");
+
+    client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromMinutes(3);
+});
+var app = builder.Build(); app.UseCors("ReactDevelopment");
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "Label.Agent.Orchestrator", mode = "PlannerWorkflowPhase2", timestamp = DateTimeOffset.UtcNow }));
+app.MapHub<OrchestratorHub>("/hubs/orchestrator"); app.Run();
