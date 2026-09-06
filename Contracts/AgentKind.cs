@@ -6,5 +6,6 @@ public enum AgentKind
     Regulatory,
     TemplateIntelligence,
     LabelGeneration,
-    CandidateEvaluation
+    CandidateEvaluation,
+    BeamSearch
 }
